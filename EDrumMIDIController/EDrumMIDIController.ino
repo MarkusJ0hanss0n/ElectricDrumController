@@ -11,11 +11,13 @@ const byte noteOff = 0x80; //bin 1000
 const byte noteOn = 0x90;  //bin 1001
 const byte controlChange = 0xB9;  //bin 1011
 
+//Params
 //tom1, tom2, tom3, kick, hi-hat, crash, ride, snare open, snare side
 const byte note[] = {36, 38, 42, 43, 48, 49, 50, 51, 52};
-const int values[] = {2000, 2000, 2000, 2000, 2000, 3600, 2000, 2000, 2000}; //between 2000 and 4700
 const int thresholds[] = {150, 150, 180, 120, 120, 120, 120, 120, 120}; //between 120 and 500
-const int debounce[] = {36, 36, 36, 36, 160, 160, 160, 36, 36};
+const int sensitivities[] = {2000, 2000, 2000, 2000, 2000, 3600, 2000, 2000, 2000}; //between 2000 and 4700  ?? old value
+const int scanTimes[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
+const int maskTimes[]= {9, 9, 9, 9, 9, 9, 9, 9, 9};
 
 const int hiHatDelay = 40;
 const int hiHatMin = 322;
@@ -29,7 +31,7 @@ DrumPad* PadList = new DrumPad[PADS];
 
 void InitPads() {
   for (int i = 0; i < PADS; i++) {
-    PadList[i].Init(i, note[i], values[i], thresholds[i], debounce[i]);
+    PadList[i].Init(i, note[i], thresholds[i], sensitivities[i], scanTimes[i], maskTimes[i]);
   }
   hiHatTimer = 0;
 }
@@ -37,12 +39,7 @@ void SendMidiNoteOff(DrumPad pad) {
   MIDI.sendNoteOff(pad.Note(), 0, CHANNEL);
 }
 void SendMidiNoteOn(DrumPad pad) {
-  float volume = (pad.SumValue()) / float(pad.Value()) * 127;
-  float adjustedVolume = 0;
-  if (volume > 127) adjustedVolume = 127;
-  else adjustedVolume = volume;
-  byte velocity = (byte)adjustedVolume;
-  MIDI.sendNoteOn(pad.Note(), velocity, CHANNEL);
+  MIDI.sendNoteOn(pad.Note(), pad.Velocity(), CHANNEL);
 }
 void SendHiHat(float input){
   float volume = ((input-hiHatMin) / (float(hiHatMax)-hiHatMin)) * 127;
@@ -61,20 +58,30 @@ void setup() {
 void loop() {
   for (int i = 0; i < PADS; i++) {
     PadList[i].UpdateReadValue();
-    int currentState = PadList[i].GetState(millis());  
+  //-1 default
+  //0 pad is sleeping (after hit)
+  //1 first hit
+  //2 during hit
+  //3 masktime over, hit end
+    int currentState = PadList[i].GetState(millis()); 
     switch(currentState){
       case 0:
-        PadList[i].AddToSum();
-        PadList[i].Playing(true);        
-        break;
+        PadList[i].CheckIfWakeUp(millis());
       case 1:
-        PadList[i].AddToSum();
+        PadList[i].AddValue();
+        PadList[i].Playing(true);
+        PadList[i].SetScanTimer(millis());        
         break;
-      case 2:        
+      case 2:
+        PadList[i].AddValue();
+        break;
+      case 3:        
         SendMidiNoteOn(PadList[i]);
         SendMidiNoteOff(PadList[i]);
-        PadList[i].ResetTimerAndSum(millis());
         PadList[i].Playing(false);
+        PadList[i].ResetScanTimer();
+        PadList[i].ResetCounters();
+        PadList[i].SetMaskTimer(millis());        
         break;      
     }
   }

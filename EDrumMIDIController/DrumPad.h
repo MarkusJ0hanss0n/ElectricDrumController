@@ -4,28 +4,37 @@
 
 class DrumPad{
   public:
-    void Init(int analogInput, byte note, int value, int threshold, int debounce);
+    void Init(int analogInput, byte note, int threshold, int sensitivity, int scanTime, int maskTime);
     void UpdateReadValue();
-    int ReadValue();
-    void AddToSum();
     int GetState(unsigned long currentTime);
-    void ResetTimerAndSum(unsigned long currentTime);
-    void Playing(bool isPlaying); 
-    byte Note();
-    int Value();
-    float SumValue();
-    int AnalogInput();     
+    bool PadSleeps();
+    void CheckIfWakeUp(unsigned long currentTime); 
+    void Playing(bool isPlaying);
+    void SetScanTimer(unsigned long currentTime);
+    void ResetScanTimer();
+    void SetMaskTimer(unsigned long currentTime);
+    void ResetCounters();
+    void AddValue();
+    byte Velocity(); 
+    byte Note();           
   private:
     int _analogInput;
     byte _note;
     int _readValue;
-    float _valueSens;
-    unsigned long _timer;
+    
+  //Params    
+    int _threshold;
+    int _sensitivity;
+    int _scanTime;
+    int _maskTime;   
+    
+  //Helpers  
     bool _isPlaying;
-    int _value;
-    int _threshold; 
-    float _sumValue;
-    int _debounce;       
+    bool _padSleeps;
+    int _sumValue;
+    int _numberOfCounts;
+    unsigned long _scanTimer;
+    unsigned long _maskTimer;       
 };
 #endif
 

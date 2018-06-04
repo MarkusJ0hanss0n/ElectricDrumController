@@ -1,56 +1,77 @@
 #include "Arduino.h"
 #include "DrumPad.h"
 
-void DrumPad::Init(int analogInput, byte note, int value, int threshold, int debounce){
-  _timer = 0;
+void DrumPad::Init(int analogInput, byte note, int threshold, int sensitivity, int scanTime, int maskTime){
+  _scanTimer = 0;
+  _maskTimer = 0;
   _isPlaying = false;
-  _sumValue = 0;
+  _padSleeps = false;
   _analogInput = analogInput;
   _note = note;
-  _value = value;
   _threshold = threshold;
-  _debounce = debounce;
-}
-int DrumPad::ReadValue(){
-  return _readValue;
+  _sensitivity = sensitivity;
+  _scanTime = scanTime;
+  _maskTime = maskTime;
+  _readValue = 0;
+  _sumValue = 0;
+  _numberOfCounts = 0;
 }
 void DrumPad::UpdateReadValue(){
   _readValue = analogRead(_analogInput);
 }
-void DrumPad::AddToSum() {
-  _sumValue = _sumValue + _readValue;
-}
 int DrumPad::GetState(unsigned long currentTime){
   int result = -1;
-  if (_readValue >= _threshold && _isPlaying == false && (currentTime - _timer >= _debounce)) {
+  if (_padSleeps){
     result = 0;
   }
-  else if (_readValue >= _threshold && _isPlaying == true) {
+  if (_readValue >= _threshold && _isPlaying == false) {
     result = 1;
   }
-  else if (_readValue < _threshold && _isPlaying == true) {
+  else if (_isPlaying == true && (currentTime - _scanTimer < _scanTime)) {
     result = 2;
   }
+  else if (_isPlaying == true && (currentTime - _scanTimer >= _scanTime)) {
+    result = 3;
+  } 
   return result;
 }
-void DrumPad::ResetTimerAndSum(unsigned long currentTime){
-  _sumValue = 0;
-  _timer = currentTime;
+bool DrumPad::PadSleeps(){
+  return _padSleeps;
+}
+void DrumPad::CheckIfWakeUp(unsigned long currentTime){
+  if (currentTime - _maskTimer < _maskTime){
+    _padSleeps = false;
+    _maskTimer = 0;
+  }
 }
 void DrumPad::Playing(bool isPlaying){
   _isPlaying = isPlaying;
 }
+void DrumPad::SetScanTimer(unsigned long currentTime){
+  _scanTimer = currentTime;
+}
+void DrumPad::ResetScanTimer(){
+  _scanTimer = 0;
+}
+void DrumPad::SetMaskTimer(unsigned long currentTime){
+  _maskTimer = currentTime;
+  _padSleeps = true;
+}
+void DrumPad::AddValue(){
+  _sumValue = _sumValue + _readValue;
+  _numberOfCounts = _numberOfCounts + 1;
+}
+void DrumPad::ResetCounters(){
+  _sumValue = 0;
+  _numberOfCounts = 0;
+}
+byte DrumPad::Velocity(){
+  float value = (float(_sumValue / _numberOfCounts)/1022)*127;
+  if (value > 127) value = 127;
+  return byte(value);
+}
 byte DrumPad::Note(){
   return _note;
-}
-int DrumPad::Value(){
-  return _value;
-}
-float DrumPad::SumValue(){
-  return _sumValue; 
-}
-int DrumPad::AnalogInput(){
-  return _analogInput;
 }
 
 
