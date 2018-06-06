@@ -7,18 +7,22 @@
 
 MIDI_CREATE_DEFAULT_INSTANCE();
 
-const byte noteOff = 0x80; //bin 1000
-const byte noteOn = 0x90;  //bin 1001
-const byte controlChange = 0xB9;  //bin 1011
+const byte noteOff = 0x80;
+const byte noteOn = 0x90;
+const byte controlChange = 0xB9;
 
 //Params
 //tom1, tom2, tom3, kick, hi-hat, crash, ride, snare open, snare side
 const byte note[] = {36, 38, 42, 43, 48, 49, 50, 51, 52};
-const int thresholds[] = {150, 150, 180, 120, 120, 120, 120, 120, 120}; //between 120 and 500
+const int baseThresholds[] = {280, 240, 220, 160, 180, 240, 240, 160, 240}; //between 120 and 500
+const float thresholdSlopes[] = {25, 25, 25, 25, 12, 15, 15, 25, 25}; //between 0 and 200(?), 20 is probably good
 const int sensitivities[] = {2000, 2000, 2000, 2000, 2000, 3600, 2000, 2000, 2000}; //between 2000 and 4700  ?? old value
-const int scanTimes[] = {2, 2, 2, 2, 2, 2, 2, 2, 2};
-const int maskTimes[]= {9, 9, 9, 9, 9, 9, 9, 9, 9};
+const int scanTimes[] = {2, 2, 2, 2, 2, 2, 2, 2, 2}; //ms
+const int maskTimes[]= {10, 10, 10, 10, 55, 25, 25, 10, 10}; //ms
+const float velocityExponents[] = {0.8, 0.8, 0.8, 0.8, 0.3, 0.8, 0.8, 0.8, 0.8}; //between 0.1 and 10.0 //1.0 is linear, 2.0 is rising slower, 0.5 is rising faster
+const float minVelocities[] = {25, 25, 25, 25, 35, 35, 35, 25, 25};
 
+//Hi-hat
 const int hiHatDelay = 40;
 const int hiHatMin = 322;
 const int hiHatMax = 490;
@@ -31,7 +35,7 @@ DrumPad* PadList = new DrumPad[PADS];
 
 void InitPads() {
   for (int i = 0; i < PADS; i++) {
-    PadList[i].Init(i, note[i], thresholds[i], sensitivities[i], scanTimes[i], maskTimes[i]);
+    PadList[i].Init(i, note[i], baseThresholds[i], thresholdSlopes[i], sensitivities[i], scanTimes[i], maskTimes[i], velocityExponents[i], minVelocities[i]);
   }
   hiHatTimer = 0;
 }
@@ -62,26 +66,33 @@ void loop() {
   //0 pad is sleeping (after hit)
   //1 first hit
   //2 during hit
-  //3 masktime over, hit end
+  //3 scantime over, hit end
+  //4 hit and sleep over, but dynamic threshold not yet back to base threshold
     int currentState = PadList[i].GetState(millis()); 
     switch(currentState){
       case 0:
         PadList[i].CheckIfWakeUp(millis());
+        break;
       case 1:
         PadList[i].AddValue();
         PadList[i].Playing(true);
-        PadList[i].SetScanTimer(millis());        
+        PadList[i].SetScanTimer(millis());       
         break;
       case 2:
         PadList[i].AddValue();
         break;
       case 3:        
         SendMidiNoteOn(PadList[i]);
-        SendMidiNoteOff(PadList[i]);
+        //SendMidiNoteOff(PadList[i]);
         PadList[i].Playing(false);
         PadList[i].ResetScanTimer();
         PadList[i].ResetCounters();
-        PadList[i].SetMaskTimer(millis());        
+        PadList[i].Sleeping(true);
+        PadList[i].SetMaskTimer(millis()); 
+        PadList[i].SetThreshold();      
+        break;
+      case 4:
+        PadList[i].DecreaseThreshold();
         break;      
     }
   }
