@@ -19,7 +19,12 @@ class DrumPad{
     void SetThreshold();
     void DecreaseThreshold();
     byte Velocity();
-    byte Note();               
+    byte Note();
+    int GetReadValue();
+    float GetThreshold();
+  //Analyze only    
+    int GetNumberOfCounts();
+    int GetSumValue();               
   private:
     byte _note;
     int _analogInput;    
@@ -42,7 +47,7 @@ class DrumPad{
     int _sumValue;
     int _numberOfCounts;
     unsigned long _scanTimer;
-    unsigned long _maskTimer;       
+    unsigned long _maskTimer; 
 };
 #endif
 

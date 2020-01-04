@@ -77,7 +77,7 @@ void DrumPad::AddValue(){
   if (_readValue > _maxValue) _maxValue = _readValue;
 }
 void DrumPad::SetThreshold(){
-  _currentThreshold = _maxValue;
+  _currentThreshold = _maxValue - _thresholdSlope;
   _maxValue = 0;
 }
 void DrumPad::DecreaseThreshold(){
@@ -89,14 +89,29 @@ void DrumPad::ResetCounters(){
   _numberOfCounts = 0;
 }
 byte DrumPad::Velocity(){
+  //Use the highest top or mean value?
   float x = float(_sumValue / _numberOfCounts);
-  float value = pow(((x-_baseThreshold)/(1023-_baseThreshold)), _velocityExponent)*127;
-  if (value <= _minVelocity) value = _minVelocity;
+  //float x = _maxValue;
+  float value = pow(abs((x-_baseThreshold)/(1023-_baseThreshold)), _velocityExponent)*127;
+  if (value <= _minVelocity) value = _minVelocity;  
   else if (value > 127) value = 127;  
   return byte(value);
 }
 byte DrumPad::Note(){
   return _note;
+}
+int DrumPad::GetReadValue(){
+  return _readValue;
+}
+float DrumPad::GetThreshold(){
+  return _currentThreshold;
+}
+//Analyze only
+int DrumPad::GetNumberOfCounts(){
+  return _numberOfCounts;
+}
+int DrumPad::GetSumValue(){
+  return _sumValue;
 }
 
 
