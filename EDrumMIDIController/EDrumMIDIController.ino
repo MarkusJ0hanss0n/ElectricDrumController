@@ -7,6 +7,7 @@
 #define MIDI_CHANNEL 10
 #define HIHAT_CONTROLLER_PIN 9    // analog
 #define PAD_SELECTOR_PIN 12       // analog
+#define PARAM_SELECTOR_PIN 12       // analog
 #define PROGRAMMING_MODE_PIN 36   // digital
 #define VALUE_ROT_ENC_A 37        // digital
 #define VALUE_ROT_ENC_B 38        // digital
@@ -64,11 +65,6 @@ int rotEncAValue;
 
 int currentSelectedPad;
 int lastSelectedPad;
-const char padNames[11][2] = {"t1", "t2", "t3", "bd", "HH", "Cr", "rI", "SO",
-  "SS", "nn", "nn"};
-const int padDisplayDelayMs = 1000;
-unsigned long displayStart = 0;
-bool displayPad = false;
 
 // EPROOM
 const byte defaultValues[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -97,13 +93,9 @@ void SendHiHat(float input){
 }
 void HandleConfigurationAndDisplay(){
   currentSelectedPad = GetSelectedPad(analogRead(PAD_SELECTOR_PIN));
-
-  if ((currentSelectedPad != lastSelectedPad) && (currentSelectedPad != -1)) {
-    displayPad = true;
-    displayStart = millis();
+  if (currentSelectedPad != -1) {
     lastSelectedPad = currentSelectedPad;
   }
-
   rotEncAValue = digitalRead(VALUE_ROT_ENC_A);
   if (!rotEncAValue && !rotEncAIsLow) {
     if (digitalRead(VALUE_ROT_ENC_B)) {
@@ -121,16 +113,7 @@ void HandleConfigurationAndDisplay(){
   else if (rotEncAValue) {
     rotEncAIsLow = false;
   }
-
-  if (displayPad) {
-    if (millis() >= (displayStart + padDisplayDelayMs)) {
-      displayPad = false;
-    }
-    Display.DisplayString(padNames[lastSelectedPad]);
-  }
-  else {
-    Display.DisplayInt(values[lastSelectedPad]);
-  }
+  Display.DisplayInt(values[lastSelectedPad]);
 }
 int GetSelectedPad(int inputValue){  
   if (inputValue < 10) return 0;
@@ -144,6 +127,17 @@ int GetSelectedPad(int inputValue){
   else if (inputValue < 870 && inputValue > 840) return 8;
   else if (inputValue < 990 && inputValue > 950) return 9;
   else if (inputValue > 1010) return 10;
+  else return -1;
+}
+int GetSelectedParam(int inputValue){  
+  if (inputValue < 430 && inputValue > 390) return 8;
+  else if (inputValue < 460 && inputValue > 430) return 7;
+  else if (inputValue < 510 && inputValue > 480) return 6;
+  else if (inputValue < 570 && inputValue > 540) return 5;
+  else if (inputValue < 640 && inputValue > 610) return 4;
+  else if (inputValue < 730 && inputValue > 700) return 3;
+  else if (inputValue < 860 && inputValue > 830) return 2;
+  else if (inputValue > 1010) return 1;
   else return -1;
 }
 void setup() {
@@ -160,7 +154,7 @@ void setup() {
 
   currentSelectedPad = GetSelectedPad(analogRead(PAD_SELECTOR_PIN));
   lastSelectedPad = currentSelectedPad;
-
+  
   rotEncAIsLow = !digitalRead(VALUE_ROT_ENC_A);
 
   // Write to memory the first time
@@ -175,7 +169,7 @@ void setup() {
 void loop() {
   // If in programming mode
   if (digitalRead(PROGRAMMING_MODE_PIN) == HIGH) {
-    HandleConfigurationAndDisplay;
+    HandleConfigurationAndDisplay();
   }
   
   for (int i = 0; i < PAD_COUNT; i++) {
