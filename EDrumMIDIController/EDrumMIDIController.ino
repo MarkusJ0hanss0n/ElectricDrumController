@@ -1,9 +1,9 @@
 #include <MIDI.h> 
 #include "DrumPad.h"
 
-#define PADS 9
-#define CHANNEL 10
-#define HIHATCONTROLLER 9
+#define PAD_COUNT 9
+#define MIDI_CHANNEL 10
+#define HIHAT_CONTROLLER_PIN 9
 
 MIDI_CREATE_DEFAULT_INSTANCE();
 
@@ -36,25 +36,25 @@ int lastValue = 0;
 int inputVal;
 bool isOver = false;
 
-DrumPad* PadList = new DrumPad[PADS];
+DrumPad* PadList = new DrumPad[PAD_COUNT];
 
 void InitPads() {
-  for (int i = 0; i < PADS; i++) {
+  for (int i = 0; i < PAD_COUNT; i++) {
     PadList[i].Init(i, note[i], baseThresholds[i], thresholdSlopes[i], sensitivities[i], scanTimes[i], maskTimes[i], velocityExponents[i], minVelocities[i]);
   }
   hiHatTimer = 0;
 }
 void SendMidiNoteOff(DrumPad pad) { 
-  MIDI.sendNoteOff(pad.Note(), 0, CHANNEL);
+  MIDI.sendNoteOff(pad.Note(), 0, MIDI_CHANNEL);
 }
 void SendMidiNoteOn(DrumPad pad) {
-  MIDI.sendNoteOn(pad.Note(), pad.Velocity(), CHANNEL);
+  MIDI.sendNoteOn(pad.Note(), pad.Velocity(), MIDI_CHANNEL);
 }
 void SendHiHat(float input){
   float volume = ((input-hiHatMin) / (float(hiHatMax)-hiHatMin)) * 127;
   if (volume < 10) volume = 0;
   else if (volume > 117) volume = 127;  
-  MIDI.sendControlChange(hiHatNote, (byte)volume, CHANNEL);
+  MIDI.sendControlChange(hiHatNote, (byte)volume, MIDI_CHANNEL);
   //Serial.println(String("Input ") + input + String(", Volume ") + volume);
 }
 void setup() {
@@ -63,7 +63,7 @@ void setup() {
   InitPads();  
 }
 void loop() {
-  for (int i = 0; i < PADS; i++) {
+  for (int i = 0; i < PAD_COUNT; i++) {
     PadList[i].UpdateReadValue();
     //-1 default
     //0 pad is sleeping (after hit)
@@ -106,7 +106,7 @@ void loop() {
         break;      
     }
   }
-  hiHatRead = analogRead(HIHATCONTROLLER);
+  hiHatRead = analogRead(HIHAT_CONTROLLER_PIN);
   //Serial.println(hiHatRead);
   if ((hiHatRead > hiHatMin) && (hiHatRead < hiHatMax) && (millis() - hiHatTimer > hiHatDelay)){
     hiHatTimer = millis();
@@ -119,7 +119,7 @@ void loop() {
   //Serial.println(inputVal);
   if ((inputVal >= 1000) && (isOver == false)){
     isOver = true;
-    MIDI.sendNoteOn(byte(39), byte(40), CHANNEL);
+    MIDI.sendNoteOn(byte(39), byte(40), MIDI_CHANNEL);
     //Serial.println("Test");    
   }else if ((inputVal < 1000) && (isOver == true)){
     isOver = false;
