@@ -4,7 +4,7 @@
 
 class DrumPad{
   public:
-    void Init(int analogInput, byte note, int baseThreshold, float thresholdSlope, int sensitivity, int scanTime, int maskTime, float velocityExponent, float minVelocity);
+    void Init(int analogInput, byte note);
     void UpdateReadValue();
     int GetState(unsigned long currentTime);
     bool PadSleeps();
@@ -21,7 +21,9 @@ class DrumPad{
     byte Velocity();
     byte Note();
     int GetReadValue();
-    float GetThreshold();
+    int GetThreshold();
+    int GetParamValue(int paramIndex);
+    void SetParamValue(int paramIndex, int value);
   //Analyze only    
     int GetNumberOfCounts();
     int GetSumValue();               
@@ -32,17 +34,16 @@ class DrumPad{
     
   //Params       
     int _baseThreshold;
-    float _thresholdSlope;
-    int _sensitivity;
+    int _thresholdSlope;
     int _scanTime;
     int _maskTime;
-    float _velocityExponent;
-    float _minVelocity;   
+    int _velocityExponent;
+    int _minVelocity;   
     
   //Helpers  
     bool _isPlaying;
     bool _padSleeps;
-    float _currentThreshold;
+    int _currentThreshold;
     int _maxValue;
     int _sumValue;
     int _numberOfCounts;

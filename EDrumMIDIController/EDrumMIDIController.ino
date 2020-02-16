@@ -4,13 +4,15 @@
 #include <EEPROM.h>
 
 #define PAD_COUNT 9
+#define PARAM_COUNT 6
 #define MIDI_CHANNEL 10
 #define HIHAT_CONTROLLER_PIN 9    // analog
 #define PAD_SELECTOR_PIN 12       // analog
-#define PARAM_SELECTOR_PIN 12       // analog
+#define PARAM_SELECTOR_PIN 13     // analog
 #define PROGRAMMING_MODE_PIN 36   // digital
 #define VALUE_ROT_ENC_A 37        // digital
 #define VALUE_ROT_ENC_B 38        // digital
+#define BTN_PIN 39                // digital
 
 // Display pins, all digital
 #define DISPLAY_DIG_1 30
@@ -24,22 +26,32 @@
 #define DISPLAY_G 29
 #define DISPLAY_DP 24
 
+////////////////////////////
+//          MIDI          //
+////////////////////////////
+
 MIDI_CREATE_DEFAULT_INSTANCE();
 
 const byte noteOff = 0x80;
 const byte noteOn = 0x90;
 const byte controlChange = 0xB9;
 
-// Pad params
+////////////////////////////
+//   Pads and parameters  //
+////////////////////////////
+
 // tom1, tom2, tom3, kick, hi-hat, crash, ride, snare open, snare side
 const byte note[] = {36, 38, 42, 43, 48, 49, 50, 51, 52};
-const int baseThresholds[] = {280, 240, 230, 140, 180, 250, 180, 160, 240}; //between 120 and 500
-const float thresholdSlopes[] = {100, 100, 100, 70, 10, 40, 45, 100, 100}; //between 0 and 200(?), 20 is probably good
-const int sensitivities[] = {2000, 2000, 2000, 2000, 2000, 3600, 2000, 2000, 2000}; //between 2000 and 4700  ?? old value
+const int baseThresholds[] = {280, 240, 230, 140, 180, 250, 180, 160, 240};
+const int thresholdSlopes[] = {100, 100, 100, 70, 10, 40, 45, 100, 100};
 const int scanTimes[] = {8, 8, 8, 8, 8, 8, 8, 8, 8}; //ms
 const int maskTimes[]= {10, 10, 10, 10, 30, 16, 20, 10, 10}; //ms
-const float velocityExponents[] = {1.2, 1.2, 1.2, 0.4, 0.4, 0.8, 0.8, 0.8, 1.8}; //between 0.1 and 10.0 //1.0 is linear, 2.0 is curving -y, 0.5 is curving +y
-const float minVelocities[] = {25, 25, 25, 25, 35, 35, 35, 25, 25};
+const int velocityExponents[] = {12, 12, 12, 4, 4, 8, 8, 8, 18}; // 10 is linear, 20 is curving -y, 5 is curving +y
+const int minVelocities[] = {25, 25, 25, 25, 35, 35, 35, 25, 25};
+
+const int minParamVal[] = {100, 0, 0, 0, 0, 0};
+const int maxParamVal[] = {610, 200, 99, 99, 99, 99};
+const int stepParamVal[] = {5, 2, 1, 1, 1, 1}; //temporary
 
 // Hi-hat
 const int hiHatDelay = 5; //30
@@ -57,24 +69,47 @@ bool isOver = false;
 
 DrumPad* PadList = new DrumPad[PAD_COUNT];
 
-// Display and programming mode
+////////////////////////////
+//    Programming mode    //
+////////////////////////////
+
+int currentVal;
+
+// Display
 SevSeg Display;
+bool displayAcc = false;
+int displayNum;
+unsigned long accTimer = 0;
+int displayAccLimitMs = 2000;
 
-bool rotEncAIsLow;
+// Value setter, rotary encoder 
 int rotEncAValue;
+bool rotEncAIsLow;
 
+// Pad selector, potentiometer
 int currentSelectedPad;
 int lastSelectedPad;
 
-// EPROOM
-const byte defaultValues[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-byte values[11];
+// Param selector, rotary switch
+int currentSelectedParam;
+int lastSelectedParam;
+
+// Store values/set default values, push button
+int currentBtnState;
+int lastBtnState;
+unsigned long btnPressedTimer = 0;
+int saveValuesPressTimeMs = 1000;
+int setValuesToDefaultPressTimeMS = 5000;
 
 void InitPads() {
   for (int i = 0; i < PAD_COUNT; i++) {
-    PadList[i].Init(i, note[i], baseThresholds[i], thresholdSlopes[i],
-      sensitivities[i], scanTimes[i], maskTimes[i], velocityExponents[i],
-      minVelocities[i]);
+    PadList[i].Init(i, note[i]);
+    
+    //SetValuesToDefault();
+
+    for (int j = 0; j < PARAM_COUNT; j++) {
+      PadList[i].SetParamValue(j, GetValueFromEPROOM(i, j));
+    }  
   }
   hiHatTimer = 0;
 }
@@ -89,31 +124,76 @@ void SendHiHat(float input){
   if (volume < 10) volume = 0;
   else if (volume > 117) volume = 127;  
   MIDI.sendControlChange(hiHatNote, (byte)volume, MIDI_CHANNEL);
-  //Serial.println(String("Input ") + input + String(", Volume ") + volume);
 }
 void HandleConfigurationAndDisplay(){
-  currentSelectedPad = GetSelectedPad(analogRead(PAD_SELECTOR_PIN));
-  if (currentSelectedPad != -1) {
-    lastSelectedPad = currentSelectedPad;
+  if (displayAcc) {
+    Display.DisplayInt(displayNum);
+    if (millis() >= (accTimer + displayAccLimitMs)) {
+      displayAcc = false;
+    }
   }
-  rotEncAValue = digitalRead(VALUE_ROT_ENC_A);
-  if (!rotEncAValue && !rotEncAIsLow) {
-    if (digitalRead(VALUE_ROT_ENC_B)) {
-      if (values[lastSelectedPad] > 0) {
-        values[lastSelectedPad]--;
+  else {  
+    currentSelectedPad = GetSelectedPad(analogRead(PAD_SELECTOR_PIN));
+    if (currentSelectedPad != -1) {
+      lastSelectedPad = currentSelectedPad;
+    }
+    currentSelectedParam = GetSelectedParam(analogRead(PARAM_SELECTOR_PIN));
+    if (currentSelectedParam != -1) {
+      lastSelectedParam = currentSelectedParam;
+    }
+    if ((currentSelectedPad < PAD_COUNT) && (currentSelectedParam < PARAM_COUNT)) {
+      currentVal = PadList[lastSelectedPad].GetParamValue(lastSelectedParam);
+
+      rotEncAValue = digitalRead(VALUE_ROT_ENC_A);
+      if (!rotEncAValue && !rotEncAIsLow) {
+        if (digitalRead(VALUE_ROT_ENC_B)) {
+          if (currentVal > minParamVal[lastSelectedParam]) {
+            currentVal -= stepParamVal[lastSelectedParam];
+            PadList[lastSelectedPad].SetParamValue(lastSelectedParam, currentVal);
+          }
+        }
+        else {
+          if (PadList[lastSelectedPad].GetParamValue(lastSelectedParam) < maxParamVal[lastSelectedParam]){
+            currentVal += stepParamVal[lastSelectedParam];
+            PadList[lastSelectedPad].SetParamValue(lastSelectedParam, currentVal);
+          }
+        }
+        rotEncAIsLow = true;
       }
+      else if (rotEncAValue) {
+        rotEncAIsLow = false;
+      }
+      
+      Display.DisplayInt(map(currentVal, minParamVal[lastSelectedParam], maxParamVal[lastSelectedParam], 0, 99));
     }
     else {
-      if (values[lastSelectedPad] < 99) {
-        values[lastSelectedPad]++;
-      }
+      Display.DisplayString("nn");
     }
-    rotEncAIsLow = true;
-  }
-  else if (rotEncAValue) {
-    rotEncAIsLow = false;
-  }
-  Display.DisplayInt(values[lastSelectedPad]);
+
+    currentBtnState = digitalRead(BTN_PIN);
+    // on button pressed
+    if ((lastBtnState == HIGH) && (currentBtnState == LOW)) {
+      btnPressedTimer = millis();
+    }
+    // on button released
+    else if ((lastBtnState == LOW) && (currentBtnState == HIGH)){
+      // Set values to default
+      if (millis() >= btnPressedTimer + setValuesToDefaultPressTimeMS){
+        SetValuesToDefault();
+        displayNum = 99;
+        displayAcc = true;
+        accTimer = millis();
+      }
+      // Save current values to EPROOM
+      else if (millis() >= btnPressedTimer + saveValuesPressTimeMs) {
+        SaveAllValuesToEPROOM();
+        displayNum = 10;
+        displayAcc = true;
+        accTimer = millis();
+      }            
+    }
+    lastBtnState = currentBtnState;
+  }  
 }
 int GetSelectedPad(int inputValue){  
   if (inputValue < 10) return 0;
@@ -130,19 +210,52 @@ int GetSelectedPad(int inputValue){
   else return -1;
 }
 int GetSelectedParam(int inputValue){  
-  if (inputValue < 430 && inputValue > 390) return 8;
-  else if (inputValue < 460 && inputValue > 430) return 7;
-  else if (inputValue < 510 && inputValue > 480) return 6;
-  else if (inputValue < 570 && inputValue > 540) return 5;
-  else if (inputValue < 640 && inputValue > 610) return 4;
-  else if (inputValue < 730 && inputValue > 700) return 3;
-  else if (inputValue < 860 && inputValue > 830) return 2;
-  else if (inputValue > 1010) return 1;
+  if (inputValue < 430 && inputValue > 390) return 7;
+  else if (inputValue < 460 && inputValue > 430) return 6;
+  else if (inputValue < 510 && inputValue > 480) return 5;
+  else if (inputValue < 570 && inputValue > 540) return 4;
+  else if (inputValue < 640 && inputValue > 610) return 3;
+  else if (inputValue < 730 && inputValue > 700) return 2;
+  else if (inputValue < 860 && inputValue > 830) return 1;
+  else if (inputValue > 1010) return 0;
   else return -1;
+}
+void SaveAllValuesToEPROOM(){
+  int paramVal;
+  byte lowByte = 0;
+  byte highByte = 0;
+  int addrCounter = 0;
+  for (int i = 0; i < PAD_COUNT; i++) {
+    for (int j = 0; j < PARAM_COUNT; j++) {
+      paramVal = PadList[i].GetParamValue(j);
+      lowByte = ((paramVal >> 0) & 0xFF);
+      highByte = ((paramVal >> 8) & 0xFF);
+      EEPROM.write(addrCounter, lowByte);
+      EEPROM.write(addrCounter + 1, highByte);      
+      addrCounter += 2;
+    }
+  }  
+}
+void SetValuesToDefault(){
+  for (int i = 0; i < PAD_COUNT; i++) {
+    PadList[i].SetParamValue(0, baseThresholds[i]);
+    PadList[i].SetParamValue(1, thresholdSlopes[i]);
+    PadList[i].SetParamValue(2, scanTimes[i]);
+    PadList[i].SetParamValue(3, maskTimes[i]);
+    PadList[i].SetParamValue(4, velocityExponents[i]);
+    PadList[i].SetParamValue(5, minVelocities[i]);
+  }
+}
+int GetValueFromEPROOM(int padIndex, int paramIndex){
+  int addrIndex = ((padIndex * PARAM_COUNT) + paramIndex) * 2;
+  byte lowByte = EEPROM.read(addrIndex);
+  byte highByte = EEPROM.read(addrIndex + 1);
+  int resValue = ((lowByte << 0) & 0xFF) + ((highByte << 8) & 0xFF00);
+  return resValue;
 }
 void setup() {
   MIDI.begin(MIDI_CHANNEL_OFF);
-  //Serial.begin(38400);
+  Serial.begin(9600);
   InitPads();
 
   Display.Begin(1, 2, DISPLAY_DIG_1, DISPLAY_DIG_2, DISPLAY_A, DISPLAY_B,
@@ -151,27 +264,27 @@ void setup() {
   pinMode(PROGRAMMING_MODE_PIN, INPUT);
   pinMode(VALUE_ROT_ENC_A, INPUT_PULLUP);
   pinMode(VALUE_ROT_ENC_B, INPUT_PULLUP);
+  pinMode(BTN_PIN, INPUT_PULLUP);
 
   currentSelectedPad = GetSelectedPad(analogRead(PAD_SELECTOR_PIN));
   lastSelectedPad = currentSelectedPad;
-  
+
+  currentSelectedParam = GetSelectedParam(analogRead(PARAM_SELECTOR_PIN));
+  lastSelectedParam = currentSelectedParam;
+
+  currentVal = PadList[lastSelectedPad].GetParamValue(lastSelectedParam);
+
   rotEncAIsLow = !digitalRead(VALUE_ROT_ENC_A);
 
-  // Write to memory the first time
-  // for (int i = 0; i < 11; i++) {
-  //   EEPROM.write(i, defaultValues[i]);
-  // } 
-  
-  for (int i = 0; i < 11; i++) {
-    values[i] = EEPROM.read(i);
-  } 
+  currentBtnState = digitalRead(BTN_PIN);
+  lastBtnState = currentBtnState;
 }
 void loop() {
   // If in programming mode
   if (digitalRead(PROGRAMMING_MODE_PIN) == HIGH) {
     HandleConfigurationAndDisplay();
   }
-  
+  else{   // temporary, remove the else
   for (int i = 0; i < PAD_COUNT; i++) {
     PadList[i].UpdateReadValue();
     //-1 default
@@ -183,24 +296,20 @@ void loop() {
     int currentState = PadList[i].GetState(millis()); 
     switch(currentState){
       case 0:
-        //Serial.println(analogRead(i) + String(", padNr ") + i + String(", case 0"));
         PadList[i].CheckIfWakeUp(millis());
         PadList[i].DecreaseThreshold();
         break;
       case 1:
-        //Serial.println(analogRead(i) + String(", padNr ") + i + String(", case 1, threshold ") + PadList[i].GetThreshold());
         PadList[i].AddValue();
         PadList[i].Playing(true);
         PadList[i].SetScanTimer(millis());
         PadList[i].SetThreshold();       
         break;
       case 2:
-        //Serial.println(analogRead(i) + String(", padNr ") + i + String(", case 2"));
         if (PadList[i].GetReadValue() > PadList[i].GetThreshold()) PadList[i].AddValue();
         PadList[i].DecreaseThreshold();
         break;
-      case 3: 
-        //Serial.println(analogRead(i) + String(", padNr ") + i + String(", case 3, velocity ") + PadList[i].Velocity() + String(", sumVal ") + PadList[i].GetSumValue() + String(", numCount ") + PadList[i].GetNumberOfCounts());       
+      case 3:     
         SendMidiNoteOn(PadList[i]);
         //SendMidiNoteOff(PadList[i]);
         PadList[i].Playing(false);
@@ -210,13 +319,11 @@ void loop() {
         PadList[i].SetMaskTimer(millis());     
         break;
       case 4:
-        //Serial.println(analogRead(i) + String(", padNr ") + i + String(", case 4, threshold ") + PadList[i].GetThreshold());
         PadList[i].DecreaseThreshold();
         break;      
     }
   }
   hiHatRead = analogRead(HIHAT_CONTROLLER_PIN);
-  //Serial.println(hiHatRead);
   if ((hiHatRead > hiHatMin) && (hiHatRead < hiHatMax) && (millis() - hiHatTimer > hiHatDelay)){
     hiHatTimer = millis();
     if (abs(hiHatRead - lastValue) > hiHatSensitivity){
@@ -225,12 +332,11 @@ void loop() {
     }    
   }
   inputVal = analogRead(10);
-  //Serial.println(inputVal);
   if ((inputVal >= 1000) && (isOver == false)){
     isOver = true;
-    MIDI.sendNoteOn(byte(39), byte(40), MIDI_CHANNEL);
-    //Serial.println("Test");    
+    MIDI.sendNoteOn(byte(39), byte(40), MIDI_CHANNEL); 
   }else if ((inputVal < 1000) && (isOver == true)){
     isOver = false;
+  }
   }
 }

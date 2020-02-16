@@ -1,21 +1,11 @@
 #include "Arduino.h"
 #include "DrumPad.h"
 
-void DrumPad::Init(int analogInput, byte note, int baseThreshold, float thresholdSlope, int sensitivity, int scanTime, int maskTime, float velocityExponent, float minVelocity){
+void DrumPad::Init(int analogInput, byte note){
   _note = note;
   _analogInput = analogInput;
 
-//Params
-  _baseThreshold = baseThreshold;  
-  _thresholdSlope = thresholdSlope;
-  _sensitivity = sensitivity;
-  _scanTime = scanTime;
-  _maskTime = maskTime;
-  _velocityExponent = velocityExponent;
-  _minVelocity = minVelocity;  
-
-//Helpers
-  _currentThreshold = baseThreshold;  
+//Helpers 
   _scanTimer = 0;
   _maskTimer = 0;
   _isPlaying = false;
@@ -92,7 +82,7 @@ byte DrumPad::Velocity(){
   //Use the highest top or mean value?
   float x = float(_sumValue / _numberOfCounts);
   //float x = _maxValue;
-  float value = pow(abs((x-_baseThreshold)/(1023-_baseThreshold)), _velocityExponent)*127;
+  float value = pow(abs((x-_baseThreshold)/(1023-_baseThreshold)), (_velocityExponent / 10))*127;
   if (value <= _minVelocity) value = _minVelocity;  
   else if (value > 127) value = 127;  
   return byte(value);
@@ -103,8 +93,58 @@ byte DrumPad::Note(){
 int DrumPad::GetReadValue(){
   return _readValue;
 }
-float DrumPad::GetThreshold(){
+int DrumPad::GetThreshold(){
   return _currentThreshold;
+}
+int DrumPad::GetParamValue(int paramIndex){
+  switch (paramIndex)
+  {
+  case 0:
+    return _baseThreshold;
+    break;
+  case 1:
+    return _thresholdSlope;
+    break;
+  case 2:
+    return _scanTime;
+    break;
+  case 3:
+    return _maskTime;
+    break;
+  case 4:
+    return _velocityExponent;
+    break;
+  case 5:
+    return _minVelocity;
+    break;  
+  default:
+    return -1;
+    break;
+  }
+}
+void DrumPad::SetParamValue(int paramIndex, int value){
+  switch (paramIndex)
+  {
+  case 0:
+    _baseThreshold = value;
+    _currentThreshold = _baseThreshold;
+    break;
+  case 1:
+    _thresholdSlope = value;
+    break;
+  case 2:
+    _scanTime = value;
+    break;
+  case 3:
+    _maskTime = value;
+    break;
+  case 4:
+    _velocityExponent = value;
+    break;
+  case 5:
+    _minVelocity = value;
+    break;  
+  }
 }
 //Analyze only
 int DrumPad::GetNumberOfCounts(){
