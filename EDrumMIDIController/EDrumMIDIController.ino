@@ -42,6 +42,8 @@ const byte controlChange = 0xB9;
 
 // tom1, tom2, tom3, kick, hi-hat, crash, ride, snare open, snare side
 const byte note[] = {36, 38, 42, 43, 48, 49, 50, 51, 52};
+
+// Default param values
 const int baseThresholds[] = {280, 240, 230, 140, 180, 250, 180, 160, 240};
 const int thresholdSlopes[] = {100, 100, 100, 70, 10, 40, 45, 100, 100};
 const int scanTimes[] = {8, 8, 8, 8, 8, 8, 8, 8, 8}; //ms
@@ -54,11 +56,11 @@ const int maxParamVal[] = {610, 200, 99, 99, 99, 99};
 const int stepParamVal[] = {5, 2, 1, 1, 1, 1}; //temporary
 
 // Hi-hat
+const byte hiHatNote = 0x04;
 const int hiHatDelay = 5; //30
 const int hiHatMin = 0;
 const int hiHatMax = 610;
 const int hiHatSensitivity = 5; //15
-const byte hiHatNote = 0x04;
 unsigned long hiHatTimer;
 float hiHatRead;
 int lastValue = 0;
@@ -77,10 +79,10 @@ int currentVal;
 
 // Display
 SevSeg Display;
-bool displayAcc = false;
-int displayNum;
-unsigned long accTimer = 0;
-int displayAccLimitMs = 2000;
+bool displayAck = false;
+byte ackType; // 0 = Save, 1 = Set to default
+unsigned long ackTimer = 0;
+int displayAckLimitMs = 2000;
 
 // Value setter, rotary encoder 
 int rotEncAValue;
@@ -126,10 +128,15 @@ void SendHiHat(float input){
   MIDI.sendControlChange(hiHatNote, (byte)volume, MIDI_CHANNEL);
 }
 void HandleConfigurationAndDisplay(){
-  if (displayAcc) {
-    Display.DisplayInt(displayNum);
-    if (millis() >= (accTimer + displayAccLimitMs)) {
-      displayAcc = false;
+  if (displayAck) {
+    if (ackType == 0) {             // Save
+      Display.DisplayString(" S");
+    }
+    else if (ackType == 1) {        // Set to default
+      Display.DisplayString(" -");
+    }
+    if (millis() >= (ackTimer + displayAckLimitMs)) {
+      displayAck = false;
     }
   }
   else {  
@@ -180,16 +187,16 @@ void HandleConfigurationAndDisplay(){
       // Set values to default
       if (millis() >= btnPressedTimer + setValuesToDefaultPressTimeMS){
         SetValuesToDefault();
-        displayNum = 99;
-        displayAcc = true;
-        accTimer = millis();
+        ackType = 1;
+        displayAck = true;
+        ackTimer = millis();
       }
       // Save current values to EPROOM
       else if (millis() >= btnPressedTimer + saveValuesPressTimeMs) {
         SaveAllValuesToEPROOM();
-        displayNum = 10;
-        displayAcc = true;
-        accTimer = millis();
+        ackType = 0;
+        displayAck = true;
+        ackTimer = millis();
       }            
     }
     lastBtnState = currentBtnState;
@@ -255,7 +262,7 @@ int GetValueFromEPROOM(int padIndex, int paramIndex){
 }
 void setup() {
   MIDI.begin(MIDI_CHANNEL_OFF);
-  Serial.begin(9600);
+  //Serial.begin(9600);
   InitPads();
 
   Display.Begin(1, 2, DISPLAY_DIG_1, DISPLAY_DIG_2, DISPLAY_A, DISPLAY_B,
