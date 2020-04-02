@@ -7,23 +7,23 @@
 #define PARAM_COUNT 6
 #define MIDI_CHANNEL 10
 #define HIHAT_CONTROLLER_PIN 9    // analog
-#define PAD_SELECTOR_PIN 12       // analog
-#define PARAM_SELECTOR_PIN 13     // analog
-#define PROGRAMMING_MODE_PIN 36   // digital
-#define VALUE_ROT_ENC_A 37        // digital
-#define VALUE_ROT_ENC_B 38        // digital
-#define BTN_PIN 39                // digital
+#define PAD_SELECTOR_PIN 10       // analog
+#define PARAM_SELECTOR_PIN 11     // analog
+#define PROGRAMMING_MODE_PIN 32   // digital
+#define VALUE_ROT_ENC_A 33        // digital
+#define VALUE_ROT_ENC_B 34        // digital
+#define BTN_PIN 35                // digital
 
 // Display pins, all digital
-#define DISPLAY_DIG_1 30
-#define DISPLAY_DIG_2 31
-#define DISPLAY_A 25
-#define DISPLAY_B 23
+#define DISPLAY_DIG_1 23
+#define DISPLAY_DIG_2 30
+#define DISPLAY_A 29
+#define DISPLAY_B 31
 #define DISPLAY_C 28
 #define DISPLAY_D 22
 #define DISPLAY_E 26
 #define DISPLAY_F 27
-#define DISPLAY_G 29
+#define DISPLAY_G 25
 #define DISPLAY_DP 24
 
 ////////////////////////////
@@ -65,10 +65,6 @@ unsigned long hiHatTimer;
 float hiHatRead;
 int lastValue = 0;
 
-// CrashStop
-int inputVal;
-bool isOver = false;
-
 DrumPad* PadList = new DrumPad[PAD_COUNT];
 
 ////////////////////////////
@@ -106,13 +102,12 @@ int setValuesToDefaultPressTimeMS = 5000;
 void InitPads() {
   for (int i = 0; i < PAD_COUNT; i++) {
     PadList[i].Init(i, note[i]);
-    
-    //SetValuesToDefault();
 
     for (int j = 0; j < PARAM_COUNT; j++) {
       PadList[i].SetParamValue(j, GetValueFromEPROOM(i, j));
     }  
   }
+  //SetValuesToDefault();
   hiHatTimer = 0;
 }
 void SendMidiNoteOff(DrumPad pad) { 
@@ -170,7 +165,6 @@ void HandleConfigurationAndDisplay(){
       else if (rotEncAValue) {
         rotEncAIsLow = false;
       }
-      
       Display.DisplayInt(map(currentVal, minParamVal[lastSelectedParam], maxParamVal[lastSelectedParam], 0, 99));
     }
     else {
@@ -202,6 +196,7 @@ void HandleConfigurationAndDisplay(){
     lastBtnState = currentBtnState;
   }  
 }
+
 int GetSelectedPad(int inputValue){  
   if (inputValue < 10) return 0;
   else if (inputValue < 35 && inputValue > 20) return 1;
@@ -291,7 +286,7 @@ void loop() {
   if (digitalRead(PROGRAMMING_MODE_PIN) == HIGH) {
     HandleConfigurationAndDisplay();
   }
-  else{   // temporary, remove the else
+
   for (int i = 0; i < PAD_COUNT; i++) {
     PadList[i].UpdateReadValue();
     //-1 default
@@ -338,12 +333,5 @@ void loop() {
       SendHiHat(hiHatRead);
     }    
   }
-  inputVal = analogRead(10);
-  if ((inputVal >= 1000) && (isOver == false)){
-    isOver = true;
-    MIDI.sendNoteOn(byte(39), byte(40), MIDI_CHANNEL); 
-  }else if ((inputVal < 1000) && (isOver == true)){
-    isOver = false;
-  }
-  }
+
 }
