@@ -16,6 +16,8 @@ void DrumPad::Init(int analogInput, byte note){
   _maxValue = 0;
 }
 void DrumPad::UpdateReadValue(){
+  // First read is just to avoid the high impedance problem.
+  _readValue = analogRead(_analogInput);
   _readValue = analogRead(_analogInput);
 }
 int DrumPad::GetState(unsigned long currentTime){

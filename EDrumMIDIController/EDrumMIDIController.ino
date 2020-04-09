@@ -257,7 +257,7 @@ int GetValueFromEPROOM(int padIndex, int paramIndex){
 }
 void setup() {
   MIDI.begin(MIDI_CHANNEL_OFF);
-  //Serial.begin(9600);
+  //Serial.begin(115200);
   InitPads();
 
   Display.Begin(1, 2, DISPLAY_DIG_1, DISPLAY_DIG_2, DISPLAY_A, DISPLAY_B,
@@ -325,13 +325,13 @@ void loop() {
         break;      
     }
   }
-  hiHatRead = analogRead(HIHAT_CONTROLLER_PIN);
-  if ((hiHatRead > hiHatMin) && (hiHatRead < hiHatMax) && (millis() - hiHatTimer > hiHatDelay)){
-    hiHatTimer = millis();
-    if (abs(hiHatRead - lastValue) > hiHatSensitivity){
-      lastValue = hiHatRead;
-      SendHiHat(hiHatRead);
-    }    
-  }
+//  hiHatRead = analogRead(HIHAT_CONTROLLER_PIN);
+//  if ((hiHatRead > hiHatMin) && (hiHatRead < hiHatMax) && (millis() - hiHatTimer > hiHatDelay)){
+//    hiHatTimer = millis();
+//    if (abs(hiHatRead - lastValue) > hiHatSensitivity){
+//      lastValue = hiHatRead;
+//      SendHiHat(hiHatRead);
+//    }    
+//  }
 
 }
