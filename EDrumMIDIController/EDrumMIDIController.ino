@@ -57,12 +57,12 @@ const int stepParamVal[] = {5, 2, 1, 1, 1, 1}; //temporary
 
 // Hi-hat
 const byte hiHatNote = 0x04;
-const int hiHatDelay = 5; //30
-const int hiHatMin = 0;
-const int hiHatMax = 610;
-const int hiHatSensitivity = 5; //15
+int hiHatDelay = 5;
+int hiHatMin = 0;
+int hiHatMax = 610;
+int hiHatSensitivity = 5;
 unsigned long hiHatTimer;
-float hiHatRead;
+int hiHatRead;
 int lastValue = 0;
 
 DrumPad* PadList = new DrumPad[PAD_COUNT];
@@ -98,6 +98,9 @@ int lastBtnState;
 unsigned long btnPressedTimer = 0;
 int saveValuesPressTimeMs = 1000;
 int setValuesToDefaultPressTimeMS = 5000;
+unsigned long hiHatBtnPressedTimer = 0;
+int hiHatPressTimeMs = 1000;
+int btnShortPressCount = 0;
 
 void InitPads() {
   for (int i = 0; i < PAD_COUNT; i++) {
@@ -116,10 +119,17 @@ void SendMidiNoteOff(DrumPad pad) {
 void SendMidiNoteOn(DrumPad pad) {
   MIDI.sendNoteOn(pad.Note(), pad.Velocity(), MIDI_CHANNEL);
 }
-void SendHiHat(float input){
-  float volume = ((input-hiHatMin) / (float(hiHatMax)-hiHatMin)) * 127;
-  if (volume < 10) volume = 0;
-  else if (volume > 117) volume = 127;  
+void SendHiHat(int input){
+  int volume = 0;
+  if (hiHatRead <= hiHatMin) {
+    volume = 0;  
+  }
+  else if (hiHatRead >= hiHatMax) {
+    volume = 127;
+  }
+  else{
+    volume = map(input, hiHatMin, hiHatMax, 0, 127);
+  }
   MIDI.sendControlChange(hiHatNote, (byte)volume, MIDI_CHANNEL);
 }
 void HandleConfigurationAndDisplay(){
@@ -129,6 +139,12 @@ void HandleConfigurationAndDisplay(){
     }
     else if (ackType == 1) {        // Set to default
       Display.DisplayString(" -");
+    }
+    else if (ackType == 2) {        // Hi-hat max calibration
+      Display.DisplayString("HI");
+    }
+    else if (ackType == 3) {        // Hi-hat min calibration
+      Display.DisplayString("LO");
     }
     if (millis() >= (ackTimer + displayAckLimitMs)) {
       displayAck = false;
@@ -155,7 +171,7 @@ void HandleConfigurationAndDisplay(){
           }
         }
         else {
-          if (PadList[lastSelectedPad].GetParamValue(lastSelectedParam) < maxParamVal[lastSelectedParam]){
+          if (currentVal < maxParamVal[lastSelectedParam]){
             currentVal += stepParamVal[lastSelectedParam];
             PadList[lastSelectedPad].SetParamValue(lastSelectedParam, currentVal);
           }
@@ -166,6 +182,34 @@ void HandleConfigurationAndDisplay(){
         rotEncAIsLow = false;
       }
       Display.DisplayInt(map(currentVal, minParamVal[lastSelectedParam], maxParamVal[lastSelectedParam], 0, 99));
+    }
+    // Hi-hat
+    else if ((currentSelectedPad == HIHAT_CONTROLLER_PIN) && (currentSelectedParam < 2)){
+      if (currentSelectedParam == 0) currentVal = hiHatDelay;
+      if (currentSelectedParam == 1) currentVal = hiHatSensitivity;
+
+      rotEncAValue = digitalRead(VALUE_ROT_ENC_A);
+      if (!rotEncAValue && !rotEncAIsLow) {
+        if (digitalRead(VALUE_ROT_ENC_B)) {
+          if (currentVal > 0) {
+            currentVal -= 1;
+            PadList[lastSelectedPad].SetParamValue(lastSelectedParam, currentVal);
+          }
+        }
+        else {
+          if (currentVal < 99){
+            currentVal += 1;
+            PadList[lastSelectedPad].SetParamValue(lastSelectedParam, currentVal);
+          }
+        }
+        rotEncAIsLow = true;
+      }
+      else if (rotEncAValue) {
+        rotEncAIsLow = false;
+      }
+      if (currentSelectedParam == 0) hiHatDelay = currentVal;
+      if (currentSelectedParam == 1) hiHatSensitivity = currentVal;
+      Display.DisplayInt(currentVal);
     }
     else {
       Display.DisplayString("nn");
@@ -191,9 +235,37 @@ void HandleConfigurationAndDisplay(){
         ackType = 0;
         displayAck = true;
         ackTimer = millis();
-      }            
+      }
+      // Short release
+      else {
+        if (millis() >= hiHatBtnPressedTimer + hiHatPressTimeMs) {
+          hiHatBtnPressedTimer = millis();
+          btnShortPressCount = 1;  
+        }
+        else {
+          btnShortPressCount += 1;  
+        }
+      }                 
     }
     lastBtnState = currentBtnState;
+    
+    if ((btnShortPressCount != 0) && (millis() >= hiHatBtnPressedTimer + hiHatPressTimeMs)) {
+      // Calibrate Hi-hat max
+      if (btnShortPressCount == 2){
+        hiHatMax = analogRead(HIHAT_CONTROLLER_PIN);
+        ackType = 2;
+        displayAck = true;
+        ackTimer = millis();
+      }  
+      // Calibrate Hi-hat min
+      else if (btnShortPressCount >= 3){
+        hiHatMin = analogRead(HIHAT_CONTROLLER_PIN);
+        ackType = 3;
+        displayAck = true;
+        ackTimer = millis();
+      }      
+      btnShortPressCount = 0;
+    }  
   }  
 }
 
@@ -325,13 +397,12 @@ void loop() {
         break;      
     }
   }
-//  hiHatRead = analogRead(HIHAT_CONTROLLER_PIN);
-//  if ((hiHatRead > hiHatMin) && (hiHatRead < hiHatMax) && (millis() - hiHatTimer > hiHatDelay)){
-//    hiHatTimer = millis();
-//    if (abs(hiHatRead - lastValue) > hiHatSensitivity){
-//      lastValue = hiHatRead;
-//      SendHiHat(hiHatRead);
-//    }    
-//  }
-
+  hiHatRead = analogRead(HIHAT_CONTROLLER_PIN);
+  if (millis() - hiHatTimer > hiHatDelay){
+    hiHatTimer = millis();
+    if (abs(hiHatRead - lastValue) > hiHatSensitivity){
+      lastValue = hiHatRead;
+      SendHiHat(hiHatRead);
+    }    
+  }
 }
