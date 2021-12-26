@@ -13,7 +13,7 @@ void DrumPad::Init(int analogInput, byte note){
   _readValue = 0;
   _sumValue = 0;
   _numberOfCounts = 0;
-  _maxValue = 0;
+  //_maxValue = 0;
 }
 void DrumPad::UpdateReadValue(){
   // First read is just to avoid the high impedance problem.
@@ -66,11 +66,12 @@ void DrumPad::SetMaskTimer(unsigned long currentTime){
 void DrumPad::AddValue(){
   _sumValue = _sumValue + _readValue;
   _numberOfCounts = _numberOfCounts + 1;
-  if (_readValue > _maxValue) _maxValue = _readValue;
+  //if (_readValue > _maxValue) _maxValue = _readValue;
 }
 void DrumPad::SetThreshold(){
-  _currentThreshold = _maxValue - _thresholdSlope;
-  _maxValue = 0;
+  //_currentThreshold = _maxValue - _thresholdSlope;
+  _currentThreshold = _readValue - _thresholdSlope;
+  //_maxValue = 0;
 }
 void DrumPad::DecreaseThreshold(){
   _currentThreshold = _currentThreshold - _thresholdSlope;
@@ -82,9 +83,9 @@ void DrumPad::ResetCounters(){
 }
 byte DrumPad::Velocity(){
   //Use the highest top or mean value?
-  float x = float(_sumValue / _numberOfCounts);
-  //float x = _maxValue;
-  float value = pow(abs((x-_baseThreshold)/(1023-_baseThreshold)), (_velocityExponent / 10))*127;
+  float meanVal = float(_sumValue / _numberOfCounts);
+  //float meanVal = _maxValue;
+  float value = pow(abs((meanVal-_baseThreshold)/(1023-_baseThreshold)), (_velocityExponent / 10))*127;
   if (value <= _minVelocity) value = _minVelocity;  
   else if (value > 127) value = 127;  
   return byte(value);

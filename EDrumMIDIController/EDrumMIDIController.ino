@@ -32,6 +32,7 @@
 
 MIDI_CREATE_DEFAULT_INSTANCE();
 
+const bool midiEnabled = true;
 const byte noteOff = 0x80;
 const byte noteOn = 0x90;
 const byte controlChange = 0xB9;
@@ -102,13 +103,20 @@ unsigned long hiHatBtnPressedTimer = 0;
 int hiHatPressTimeMs = 1000;
 int btnShortPressCount = 0;
 
+////////////////////////////
+//        Analytics       //
+////////////////////////////
+
+const bool analyze = true;
+int padValues[PAD_COUNT];
+
 void InitPads() {
   for (int i = 0; i < PAD_COUNT; i++) {
     PadList[i].Init(i, note[i]);
 
     for (int j = 0; j < PARAM_COUNT; j++) {
       PadList[i].SetParamValue(j, GetValueFromEPROOM(i, j));
-    }  
+    }
   }
   //SetValuesToDefault();
   hiHatTimer = 0;
@@ -130,6 +138,7 @@ void SendHiHat(int input){
   else{
     volume = map(input, hiHatMin, hiHatMax, 0, 127);
   }
+  
   MIDI.sendControlChange(hiHatNote, (byte)volume, MIDI_CHANNEL);
 }
 void HandleConfigurationAndDisplay(){
@@ -327,9 +336,21 @@ int GetValueFromEPROOM(int padIndex, int paramIndex){
   int resValue = ((lowByte << 0) & 0xFF) + ((highByte << 8) & 0xFF00);
   return resValue;
 }
+void PrintPlot() {
+  for (int i = 0; i < PAD_COUNT - 1; i++) {
+    Serial.print(padValues[i]);
+    Serial.print(" ");
+  }
+  Serial.println(padValues[PAD_COUNT - 1]);
+}
 void setup() {
-  MIDI.begin(MIDI_CHANNEL_OFF);
-  //Serial.begin(115200);
+  if (analyze == true){
+    Serial.begin(115200);
+  }
+  if (midiEnabled == true){
+    MIDI.begin(MIDI_CHANNEL_OFF);
+  }
+   
   InitPads();
 
   Display.Begin(1, 2, DISPLAY_DIG_1, DISPLAY_DIG_2, DISPLAY_A, DISPLAY_B,
@@ -361,10 +382,15 @@ void loop() {
 
   for (int i = 0; i < PAD_COUNT; i++) {
     PadList[i].UpdateReadValue();
+    
+    if (analyze == true) {
+      padValues[i] = PadList[i].GetReadValue();
+    }
+    
     //-1 default
     //0 pad is sleeping (after hit)
     //1 first hit
-    //2 during hit
+    //2 during hit, within scan time
     //3 scantime over, hit end
     //4 hit and sleep over, but dynamic threshold not yet back to base threshold
     int currentState = PadList[i].GetState(millis()); 
@@ -383,9 +409,11 @@ void loop() {
         if (PadList[i].GetReadValue() > PadList[i].GetThreshold()) PadList[i].AddValue();
         PadList[i].DecreaseThreshold();
         break;
-      case 3:     
-        SendMidiNoteOn(PadList[i]);
-        //SendMidiNoteOff(PadList[i]);
+      case 3:
+        if (midiEnabled == true){
+          SendMidiNoteOn(PadList[i]);
+          SendMidiNoteOff(PadList[i]);   
+        }
         PadList[i].Playing(false);
         PadList[i].ResetScanTimer();
         PadList[i].ResetCounters();
@@ -397,12 +425,19 @@ void loop() {
         break;      
     }
   }
+
+  if (analyze == true) {
+    PrintPlot();
+  }
+  
   hiHatRead = analogRead(HIHAT_CONTROLLER_PIN);
   if (millis() - hiHatTimer > hiHatDelay){
     hiHatTimer = millis();
     if (abs(hiHatRead - lastValue) > hiHatSensitivity){
       lastValue = hiHatRead;
-      SendHiHat(hiHatRead);
+      if (midiEnabled == true){
+        SendHiHat(hiHatRead);
+      }
     }    
   }
 }
